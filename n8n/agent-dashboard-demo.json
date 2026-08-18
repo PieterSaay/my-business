@@ -1,0 +1,509 @@
+{
+  "name": "Agent Dashboard Demo",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1359b03a-5632-439b-ad31-142d00d52baa",
+      "name": "When clicking 'Execute workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Edit relayUrl to point at your webhook relay (server/), and edit the\n// agents/tasks below to whatever your real agents should be doing.\nconst relayUrl = \"http://localhost:4000\";\n\nconst agents = [\n  {\n    id: \"researcher\",\n    name: \"Researcher\",\n    role: \"Gathers source material\",\n    systemPrompt: \"You are a research agent. Gather and summarize the key facts needed for the task in a few concise bullet points.\",\n    taskTitle: \"Summarize competitor pricing for our top 3 competitors\",\n  },\n  {\n    id: \"reviewer\",\n    name: \"Reviewer\",\n    role: \"Checks facts and quality\",\n    systemPrompt: \"You are a reviewer agent. Check the given text for factual accuracy and clarity, and list any issues found.\",\n    taskTitle: \"Review last week's client report for accuracy\",\n  },\n  {\n    id: \"writer\",\n    name: \"Writer\",\n    role: \"Drafts the final output\",\n    systemPrompt: \"You are a writer agent. Draft clear, concise copy for the given brief.\",\n    taskTitle: \"Draft an outline for the Q3 newsletter\",\n  },\n];\n\nconst now = Date.now();\nreturn agents.map((agent) => ({\n  json: {\n    ...agent,\n    taskId: `${agent.id}-${now}`,\n    relayUrl,\n    startedAt: now,\n  },\n}));"
+      },
+      "id": "3fb05b78-e0ba-43f5-bd77-763367948409",
+      "name": "Define Agents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'agent_status', agent: { id: $('Define Agents').item.json.id, name: $('Define Agents').item.json.name, role: $('Define Agents').item.json.role, status: 'running', currentTask: $('Define Agents').item.json.taskTitle, updatedAt: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "7109ded0-997e-4a95-9343-1b76e9802a41",
+      "name": "Notify: Agent Running",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'task_update', task: { id: $('Define Agents').item.json.taskId, agentId: $('Define Agents').item.json.id, title: $('Define Agents').item.json.taskTitle, status: 'running', createdAt: $('Define Agents').item.json.startedAt } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "ff41f8c9-7564-4dd7-8f95-044098575da0",
+      "name": "Notify: Task Running",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'log', log: { id: $('Define Agents').item.json.taskId + '-start', agentId: $('Define Agents').item.json.id, message: 'Started: ' + $('Define Agents').item.json.taskTitle, level: 'info', timestamp: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "dab447f4-bb79-4e4d-8679-a6110dbd5edc",
+      "name": "Notify: Log Started",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-opus-5', max_tokens: 1024, system: $('Define Agents').item.json.systemPrompt, messages: [{ role: 'user', content: $('Define Agents').item.json.taskTitle }] }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "b44ed1e0-7907-411c-92af-fc5f326bb620",
+      "name": "Call Claude",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Anthropic API Key"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'log', log: { id: $('Define Agents').item.json.taskId + '-done', agentId: $('Define Agents').item.json.id, message: 'Completed: ' + $('Define Agents').item.json.taskTitle + ' — ' + (($json.content && $json.content[0] && $json.content[0].text) ? $json.content[0].text.slice(0, 200) : ''), level: 'info', timestamp: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "13a93cfb-cb1c-4712-9beb-5c222212c419",
+      "name": "Notify: Log Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'task_update', task: { id: $('Define Agents').item.json.taskId, agentId: $('Define Agents').item.json.id, title: $('Define Agents').item.json.taskTitle, status: 'done', createdAt: $('Define Agents').item.json.startedAt } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "8cbb802c-3bd4-4964-bed5-cdac38318ee5",
+      "name": "Notify: Task Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'agent_status', agent: { id: $('Define Agents').item.json.id, name: $('Define Agents').item.json.name, role: $('Define Agents').item.json.role, status: 'success', currentTask: null, updatedAt: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "a1fb94c9-6baf-40ab-87ff-550ab0617c33",
+      "name": "Notify: Agent Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'log', log: { id: $('Define Agents').item.json.taskId + '-failed', agentId: $('Define Agents').item.json.id, message: 'Failed: ' + $('Define Agents').item.json.taskTitle + ' — ' + ($json.message || $json.error || 'unknown error'), level: 'error', timestamp: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "7ec1b305-de91-45e5-a556-32fae13a7a6a",
+      "name": "Notify: Log Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'task_update', task: { id: $('Define Agents').item.json.taskId, agentId: $('Define Agents').item.json.id, title: $('Define Agents').item.json.taskTitle, status: 'failed', createdAt: $('Define Agents').item.json.startedAt } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "23d11eff-4874-4ab7-8ceb-da0f9fdd730a",
+      "name": "Notify: Task Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Define Agents').item.json.relayUrl }}/webhook/agent-event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'agent_status', agent: { id: $('Define Agents').item.json.id, name: $('Define Agents').item.json.name, role: $('Define Agents').item.json.role, status: 'error', currentTask: null, updatedAt: Date.now() } }) }}",
+        "options": {},
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "b604ee3e-b5b2-423d-bba1-6d78836efd73",
+      "name": "Notify: Agent Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        420
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_CREDENTIAL_ID",
+          "name": "Webhook Relay Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Define Agents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define Agents": {
+      "main": [
+        [
+          {
+            "node": "Notify: Agent Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Agent Running": {
+      "main": [
+        [
+          {
+            "node": "Notify: Task Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Task Running": {
+      "main": [
+        [
+          {
+            "node": "Notify: Log Started",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Log Started": {
+      "main": [
+        [
+          {
+            "node": "Call Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude": {
+      "main": [
+        [
+          {
+            "node": "Notify: Log Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify: Log Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Log Completed": {
+      "main": [
+        [
+          {
+            "node": "Notify: Task Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Task Done": {
+      "main": [
+        [
+          {
+            "node": "Notify: Agent Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Log Failed": {
+      "main": [
+        [
+          {
+            "node": "Notify: Task Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify: Task Failed": {
+      "main": [
+        [
+          {
+            "node": "Notify: Agent Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
