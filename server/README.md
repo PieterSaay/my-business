@@ -61,12 +61,15 @@ VITE_FEED_URL=http://localhost:4000/events
 
 ## Notes
 
-- In-memory history only (no disk persistence, lost on restart): the relay
-  keeps the latest status per agent, the latest state of the last 200 tasks,
-  and the last 200 log lines. A dashboard that connects after events have
-  already fired gets this replayed immediately on connect, so it opens
-  in the current state rather than empty. Check `/health` for current
-  history sizes.
+- History: the relay keeps the latest status per agent, the latest state of
+  the last 200 tasks, and the last 200 log lines, and persists it to
+  `HISTORY_FILE` (default `./data/history.json`) after every event — writes
+  are serialized and go through a temp-file-then-rename so a crash mid-write
+  can't corrupt it. On startup it reloads from that file, so history survives
+  a restart. A dashboard that connects after events have already fired gets
+  this state replayed immediately on connect, so it opens current rather
+  than empty. Check `/health` for current history sizes. Delete the file (or
+  point `HISTORY_FILE` elsewhere) to start fresh.
 - `WEBHOOK_SECRET` is optional for local dev but should always be set
   before this is reachable from outside localhost — put it behind your
   own reverse proxy/TLS too, this doesn't terminate TLS itself.

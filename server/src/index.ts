@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import type { Agent, AgentEvent, LogEntry, Task } from "./types.js";
@@ -9,6 +11,7 @@ const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "*";
 const MAX_TASKS = 200;
 const MAX_LOGS = 200;
+const HISTORY_FILE = process.env.HISTORY_FILE ?? path.join(process.cwd(), "data", "history.json");
 
 const app = express();
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -18,9 +21,57 @@ const clients = new Set<Response>();
 
 // Latest known state, kept so a client connecting after events have already
 // fired still sees where things stand instead of starting from empty.
+// Persisted to HISTORY_FILE so it also survives a restart.
 const agentHistory = new Map<string, Agent>();
 const taskHistory = new Map<string, Task>();
 const logHistory: LogEntry[] = [];
+
+async function loadHistory() {
+  let raw: string;
+  try {
+    raw = await fs.readFile(HISTORY_FILE, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn(`could not read ${HISTORY_FILE}:`, err);
+    }
+    return;
+  }
+
+  try {
+    const snapshot = JSON.parse(raw) as { agents?: Agent[]; tasks?: Task[]; logs?: LogEntry[] };
+    for (const agent of snapshot.agents ?? []) agentHistory.set(agent.id, agent);
+    for (const task of snapshot.tasks ?? []) taskHistory.set(task.id, task);
+    logHistory.push(...(snapshot.logs ?? []).slice(-MAX_LOGS));
+    console.log(
+      `loaded history from ${HISTORY_FILE}: ${agentHistory.size} agents, ${taskHistory.size} tasks, ${logHistory.length} logs`,
+    );
+  } catch (err) {
+    console.warn(`ignoring unreadable ${HISTORY_FILE}:`, err);
+  }
+}
+
+// Writes are serialized on this promise chain so concurrent events never
+// interleave two saves, and written atomically (temp file + rename) so a
+// crash mid-write can't leave a truncated/corrupt history file behind.
+let saveQueue: Promise<void> = Promise.resolve();
+
+function scheduleSave() {
+  saveQueue = saveQueue.then(saveHistory).catch((err) => {
+    console.error(`failed to persist history to ${HISTORY_FILE}:`, err);
+  });
+}
+
+async function saveHistory() {
+  const snapshot = {
+    agents: Array.from(agentHistory.values()),
+    tasks: Array.from(taskHistory.values()),
+    logs: logHistory,
+  };
+  await fs.mkdir(path.dirname(HISTORY_FILE), { recursive: true });
+  const tmpFile = `${HISTORY_FILE}.${process.pid}.tmp`;
+  await fs.writeFile(tmpFile, JSON.stringify(snapshot));
+  await fs.rename(tmpFile, HISTORY_FILE);
+}
 
 function recordEvent(event: AgentEvent) {
   if (event.type === "agent_status") {
@@ -35,6 +86,7 @@ function recordEvent(event: AgentEvent) {
     logHistory.push(event.log);
     if (logHistory.length > MAX_LOGS) logHistory.shift();
   }
+  scheduleSave();
 }
 
 function writeEvent(res: Response, event: AgentEvent) {
@@ -107,6 +159,7 @@ app.post("/webhook/agent-event", (req, res) => {
   res.status(202).json({ ok: true });
 });
 
+await loadHistory();
 app.listen(PORT, () => {
   console.log(`webhook relay listening on :${PORT}`);
   if (!WEBHOOK_SECRET) {
